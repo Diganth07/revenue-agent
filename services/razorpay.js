@@ -25,7 +25,7 @@ async function createOrder(amount, currency = 'INR', notes = {}) {
         return order;
     } catch (error) {
         console.error('Razorpay order error:', error);
-        return null;
+        throw error;
     }
 }
 

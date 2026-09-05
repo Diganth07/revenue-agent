@@ -2,7 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const { analyzeWithOpenRouter } = require('./openrouter');
 
-const storePath = path.join(__dirname, '..', 'data', 'recovery-store.json');
+const storePath = process.env.RECOVERY_STORE_PATH
+    || (process.env.VERCEL ? path.join('/tmp', 'recovery-store.json') : path.join(__dirname, '..', 'data', 'recovery-store.json'));
 const emptyStore = () => ({ auditLog: [], promises: [], metrics: {
     totalAttempted: 0,
     totalRecovered: 0,
