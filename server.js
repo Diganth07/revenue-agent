@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 
 
 const app = express();
@@ -9,7 +10,7 @@ const app = express();
 app.use(cors());
 app.use('/api/agent/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());   // <-- This line is critical
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
 const PORT = process.env.PORT || 5000;
 
