@@ -2,8 +2,11 @@ const Razorpay = require('razorpay');
 const crypto = require('crypto');
 
 function getRazorpayClient() {
-    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-        throw new Error('Razorpay credentials are not configured');
+    const missing = [];
+    if (!process.env.RAZORPAY_KEY_ID) missing.push('RAZORPAY_KEY_ID');
+    if (!process.env.RAZORPAY_KEY_SECRET) missing.push('RAZORPAY_KEY_SECRET');
+    if (missing.length > 0) {
+        throw new Error(`Missing Razorpay environment variables: ${missing.join(', ')}`);
     }
 
     return new Razorpay({
