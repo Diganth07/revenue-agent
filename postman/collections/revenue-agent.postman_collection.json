@@ -1,0 +1,132 @@
+{
+  "info": {
+    "name": "Revenue Agent API",
+    "description": "Local API tests for the Gemini-backed revenue recovery agent.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000"
+    }
+  ],
+  "item": [
+    {
+      "name": "Agent health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/agent/test",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "agent", "test"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('returns 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('agent route is working', function () { pm.expect(pm.response.json().message).to.eql('Agent route is working!'); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Run Gemini recovery",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"lossType\": \"PAYMENT_FAILURE\",\n  \"amount\": 500,\n  \"customer\": \"Postman Customer\",\n  \"reason\": \"Insufficient balance\",\n  \"language\": \"ENGLISH\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/agent/recover",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "agent", "recover"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('returns 200', function () { pm.response.to.have.status(200); });",
+              "const json = pm.response.json();",
+              "pm.test('recovery decision exists', function () { pm.expect(json.recovery).to.be.an('object'); });",
+              "pm.test('agent provider is Gemini', function () { pm.expect(json.recovery.provider).to.eql('gemini'); });",
+              "pm.test('agent did not use fallback', function () { pm.expect(json.recovery.aiFallback).to.eql(false); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get metrics",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/agent/metrics",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "agent", "metrics"]
+        }
+      }
+    },
+    {
+      "name": "Get workflows",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/agent/workflows",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "agent", "workflows"]
+        }
+      }
+    },
+    {
+      "name": "Batch recovery demo",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"count\": 6\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/agent/batch-recover",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "agent", "batch-recover"]
+        }
+      }
+    },
+    {
+      "name": "Get audit log",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/agent/audit",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "agent", "audit"]
+        }
+      }
+    }
+  ]
+}
