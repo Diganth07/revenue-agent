@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { createOrder, fetchPayment, verifyPaymentSignature, verifyWebhookSignature } = require('../services/razorpay');
-const { handleRecovery, recordSuccessfulPayment, getMetrics, getAuditLog, getPromises, getWorkflows, resetStore } = require('../services/recovery');
+const { createOrder, createPaymentLink, fetchPayment, verifyPaymentSignature, verifyWebhookSignature } = require('../services/razorpay');
+const { handleRecovery, recordSuccessfulPayment, getMetrics, getAuditLog, getAuditEntry, getPromises, getWorkflows, resolveAuditEntry, attachPaymentLink, recordPaymentLinkPaid, resetStore } = require('../services/recovery');
 
 // Test route
 router.get('/test', (req, res) => {
@@ -14,6 +14,18 @@ router.post('/recover', async (req, res) => {
         const { lossType = 'PAYMENT_FAILURE', amount = 500, customer = 'Customer', reason = 'Unknown', ...options } = req.body;
 
         const result = await handleRecovery(lossType, amount, customer, reason, options);
+        let paymentLink = null;
+        const canOfferPaymentPath = ['PAYMENT_FAILURE', 'CHECKOUT_DROPOFF'].includes(lossType)
+            && result.analysis.action !== 'ESCALATE';
+        if (canOfferPaymentPath) {
+            try {
+                const link = await createPaymentLink(amount, customer, result.analysis.message);
+                paymentLink = link.short_url || link.shortUrl || null;
+                attachPaymentLink(result.entry.id, link);
+            } catch (linkError) {
+                console.error('Payment link error:', linkError.message);
+            }
+        }
 
         res.status(200).json({
             success: true,
@@ -25,7 +37,21 @@ router.post('/recover', async (req, res) => {
                 language: result.entry.language,
                 provider: result.entry.provider,
                 aiFallback: result.entry.aiFallback,
-                promiseDate: result.entry.promiseDate
+                promiseDate: result.entry.promiseDate,
+                paymentLink,
+                paymentLinkId: result.entry.paymentLinkId || null,
+                auditId: result.entry.id,
+                nextRetryAt: result.entry.nextRetryAt,
+                nextRetryMinutes: result.entry.nextRetryMinutes,
+                retryCount: result.entry.retryCount,
+                retryLimit: result.entry.retryLimit,
+                timeline: [
+                    { label: 'Payment failure detected', status: 'complete' },
+                    { label: `${result.entry.provider === 'gemini' ? 'Gemini' : 'Recovery'} analyzed the event`, status: 'complete' },
+                    { label: `Recovery action: ${result.analysis.action}`, status: 'complete' },
+                    ...(result.entry.nextRetryAt ? [{ label: `Retry scheduled in ${result.entry.nextRetryMinutes} minutes`, status: 'current' }] : []),
+                    { label: paymentLink ? 'Razorpay payment link created' : 'Awaiting customer action', status: paymentLink ? 'complete' : 'current' }
+                ]
             },
             audit: result.entry
         });
@@ -92,6 +118,7 @@ router.post('/webhook', async (req, res) => {
 
         const event = JSON.parse(rawBody.toString('utf8'));
         const paymentEntity = event.payload?.payment?.entity || {};
+        const paymentLinkEntity = event.payload?.payment_link?.entity || {};
         if (event.event === 'payment.failed') {
             const notes = paymentEntity.notes || {};
             await handleRecovery(
@@ -99,7 +126,15 @@ router.post('/webhook', async (req, res) => {
                 Number(paymentEntity.amount || 0) / 100,
                 notes.customer || paymentEntity.email || 'Customer',
                 paymentEntity.error_description || 'Razorpay payment failed',
-                { paymentId: paymentEntity.id, orderId: paymentEntity.order_id, language: notes.language || 'ENGLISH' }
+                    { paymentId: paymentEntity.id, orderId: paymentEntity.order_id, language: notes.language || 'ENGLISH', source: 'razorpay-webhook' }
+            );
+        }
+
+        if (event.event === 'payment_link.paid') {
+            recordPaymentLinkPaid(
+                paymentLinkEntity.id,
+                paymentEntity.id,
+                Number(paymentLinkEntity.amount_paid || paymentLinkEntity.amount || 0) / 100
             );
         }
 
@@ -114,6 +149,7 @@ router.post('/webhook', async (req, res) => {
 router.post('/simulate-payment', async (req, res) => {
     try {
         const { orderId, paymentId, status = 'failed', reason = 'Bank declined', amount = 500, customer = 'Test User', ...options } = req.body;
+        options.source = 'simulator';
 
         // Simulate payment failure
         if (status === 'failed') {
@@ -162,8 +198,20 @@ router.get('/audit', (req, res) => {
     res.json(getAuditLog());
 });
 
+router.get('/cases/:id', (req, res) => {
+    const entry = getAuditEntry(req.params.id);
+    if (!entry) return res.status(404).json({ success: false, error: 'Recovery case not found' });
+    res.json({ success: true, case: entry });
+});
+
 router.get('/workflows', (req, res) => {
     res.json(getWorkflows());
+});
+
+router.post('/audit/:id/resolve', (req, res) => {
+    const entry = resolveAuditEntry(req.params.id);
+    if (!entry) return res.status(404).json({ success: false, error: 'Audit entry not found' });
+    res.json({ success: true, entry });
 });
 
 router.get('/promises', (req, res) => {
@@ -192,7 +240,8 @@ router.post('/batch-recover', async (req, res) => {
             results.push(await handleRecovery(...scenario, {
                 language: scenario[0] === 'PROMISE_TO_PAY' ? 'HINGLISH' : 'ENGLISH',
                 retryCount: scenario[0] === 'MANDATE_FAILURE' ? 1 : 0,
-                promiseDate: scenario[0] === 'PROMISE_TO_PAY' ? '2026-09-11' : undefined
+                promiseDate: scenario[0] === 'PROMISE_TO_PAY' ? '2026-09-11' : undefined,
+                source: 'batch-demo'
             }));
         }
         const metrics = getMetrics();

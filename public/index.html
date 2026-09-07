@@ -6,29 +6,29 @@
     <title>Revenue Recovery · Monitoring</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz@14..32&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --blue: #2b6de8;
-            --blue-dark: #9fc2ff;
-            --blue-soft: #173b78;
+            --accent: #5b9cff;
+            --accent-strong: #b9d4ff;
+            --accent-soft: #173b78;
             --ink: #edf4ff;
             --muted: #91a4c4;
-            --line: #243b60;
+            --line: #29446e;
             --surface: #101d34;
             --canvas: #081322;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: 'Inter', sans-serif;
+            font-family: 'DM Sans', sans-serif;
             background:
-                linear-gradient(rgba(43,109,232,0.035) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(43,109,232,0.035) 1px, transparent 1px),
-                radial-gradient(circle at 10% 0%, rgba(43, 109, 232, 0.3), transparent 28%),
+                linear-gradient(rgba(91,156,255,0.035) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(91,156,255,0.035) 1px, transparent 1px),
+                radial-gradient(circle at 88% -10%, rgba(91, 156, 255, 0.18), transparent 28%),
                 linear-gradient(180deg, #0b1a31 0%, var(--canvas) 48%, #07101d 100%);
             background-size: 32px 32px, 32px 32px, auto, auto;
             color: var(--ink);
-            padding: 28px;
+            padding: 24px;
         }
         .container { max-width: 1400px; margin: 0 auto; }
 
@@ -36,33 +36,34 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 28px;
-            padding: 16px 20px;
-            background: rgba(8,19,34,0.72);
+            margin-bottom: 24px;
+            padding: 18px 22px;
+            background: rgba(8,19,34,0.82);
             border: 1px solid rgba(36,59,96,0.95);
-            border-radius: 16px;
+            border-radius: 10px;
             box-shadow: 0 14px 34px rgba(0, 0, 0, 0.16);
             flex-wrap: wrap;
             gap: 12px;
         }
         .logo-area { display: flex; align-items: center; gap: 12px; }
         .logo-icon {
-            background: linear-gradient(145deg, #2f7bf0, #1d55bd);
+            background: linear-gradient(145deg, #5b9cff, #245fc0);
             color: white;
             font-weight: 700;
-            font-size: 18px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 16px;
             width: 42px;
             height: 42px;
             display: grid;
             place-items: center;
-            border-radius: 12px;
-            box-shadow: 0 8px 16px rgba(43, 109, 232, 0.24);
+            border-radius: 8px;
+            box-shadow: 0 8px 18px rgba(43, 109, 232, 0.24);
         }
-        .logo-area h1 { font-size: 22px; font-weight: 700; letter-spacing: 0; color: var(--ink); }
-        .logo-area span { font-size: 13px; color: var(--blue); font-weight: 600; margin-left: 8px; }
+        .logo-area h1 { font-family: 'Space Grotesk', sans-serif; font-size: 21px; font-weight: 700; letter-spacing: 0; color: var(--ink); }
+        .logo-area span { font-size: 12px; color: var(--accent); font-weight: 600; margin-left: 8px; }
         .status-badge {
             background: #123d31;
-            color: #62d49a;
+            color: var(--accent-strong);
             padding: 6px 16px;
             border-radius: 20px;
             font-size: 13px;
@@ -75,7 +76,7 @@
             content: '';
             width: 8px;
             height: 8px;
-            background: #18a967;
+            background: #2b6de8;
             border-radius: 50%;
             display: inline-block;
             animation: pulse 1.5s infinite;
@@ -86,36 +87,36 @@
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
             gap: 14px;
-            margin-bottom: 28px;
+            margin-bottom: 24px;
         }
         .metric-card {
             background: var(--surface);
             padding: 19px 20px;
-            border-radius: 14px;
+            border-radius: 10px;
             border: 1px solid var(--line);
             box-shadow: 0 10px 26px rgba(0, 0, 0, 0.14);
             position: relative;
             overflow: hidden;
         }
-        .metric-card::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--blue); }
+        .metric-card::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--accent); }
         .metric-card .label { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
-        .metric-card .value { font-size: 28px; font-weight: 750; color: var(--blue-dark); margin-top: 5px; }
+        .metric-card .value { font-family: 'Space Grotesk', sans-serif; font-size: 28px; font-weight: 700; color: var(--accent-strong); margin-top: 5px; }
 
         .two-col {
             display: grid;
             grid-template-columns: 2fr 1fr;
-            gap: 18px;
-            margin-bottom: 28px;
+            gap: 16px;
+            margin-bottom: 24px;
         }
         .panel {
             background: rgba(16,29,52,0.96);
-            border-radius: 14px;
+            border-radius: 10px;
             padding: 22px;
             border: 1px solid var(--line);
             box-shadow: 0 10px 28px rgba(0, 0, 0, 0.15);
         }
-        .panel h2 { font-size: 16px; font-weight: 750; margin-bottom: 16px; color: var(--ink); }
-        .panel h3 { font-size: 14px; font-weight: 700; margin: 12px 0 8px; color: var(--blue-dark); }
+        .panel h2 { font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 600; margin-bottom: 16px; color: var(--ink); }
+        .panel h3 { font-size: 13px; font-weight: 700; margin: 12px 0 8px; color: var(--accent-strong); text-transform: uppercase; letter-spacing: 0.06em; }
 
         .rule-item {
             display: flex;
@@ -137,7 +138,7 @@
             text-align: left;
             padding: 10px 8px;
             border-bottom: 1px solid var(--line);
-            color: var(--blue-dark);
+            color: var(--accent-strong);
             font-weight: 500;
         }
         .audit-table td {
@@ -153,7 +154,7 @@
         .badge--success { background: #123d31; color: #62d49a; }
         .badge--danger { background: #4b202d; color: #ff9db0; }
         .badge--warning { background: #4b3b19; color: #f3c969; }
-        .badge--info { background: var(--blue-soft); color: var(--blue); }
+        .badge--info { background: var(--accent-soft); color: var(--accent-strong); }
         .badge--escalate { background: #f3e8ff; color: #7c3aed; }
 
         .text-muted { color: var(--muted); font-size: 12px; }
@@ -164,18 +165,19 @@
             margin-bottom: 8px;
             background: #1b1735;
         }
+        .resolve-button { margin-top: 9px; border: 1px solid #7b6a42; background: transparent; color: #f3c969; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 12px; font-weight: 700; }
         .mt-2 { margin-top: 12px; }
         .workflow-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
-        .workflow-card { border: 1px solid var(--line); border-left: 4px solid var(--blue); padding: 13px; border-radius: 10px; background: linear-gradient(135deg, #132541, #0e1b31); }
+        .workflow-card { border: 1px solid var(--line); border-left: 3px solid var(--accent); padding: 14px; border-radius: 8px; background: linear-gradient(135deg, #132541, #0e1b31); }
         .workflow-card strong { display: block; font-size: 13px; margin-bottom: 5px; }
-        .workflow-card span { color: #91a4c4; font-size: 12px; }
+        .workflow-card span { color: var(--muted); font-size: 12px; }
         .voice-button { border: 1px solid #385377; background: #142743; color: #d9e7ff; border-radius: 6px; padding: 4px 8px; cursor: pointer; }
         .simulator { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
         .simulator label { color: #91a4c4; font-size: 12px; }
-        .simulator input, .simulator select { width: 100%; margin-top: 4px; padding: 10px; border: 1px solid #385377; border-radius: 7px; background: #0b1930; color: var(--ink); }
-        .simulator input:focus, .simulator select:focus { outline: 3px solid rgba(43, 109, 232, 0.14); border-color: var(--blue); }
+        .simulator input, .simulator select { width: 100%; margin-top: 5px; padding: 10px 11px; border: 1px solid #385377; border-radius: 6px; background: #0b1930; color: var(--ink); }
+        .simulator input:focus, .simulator select:focus { outline: 3px solid rgba(43, 109, 232, 0.14); border-color: var(--accent); }
         .simulator .wide { grid-column: 1 / -1; }
-        .btn-primary { background: linear-gradient(135deg, #347ff2, #1e5bc6); color: white; border: 0; padding: 10px 16px; border-radius: 7px; font-weight: 700; cursor: pointer; box-shadow: 0 7px 14px rgba(43, 109, 232, 0.2); }
+        .btn-primary { background: linear-gradient(135deg, #347ff2, #1e5bc6); color: white; border: 0; padding: 10px 16px; border-radius: 6px; font-weight: 700; cursor: pointer; box-shadow: 0 7px 14px rgba(43, 109, 232, 0.2); }
         .btn-primary:hover { background: linear-gradient(135deg, #286fe0, #194ea9); }
         .checkout-panel { background: radial-gradient(circle at 92% 5%, rgba(92,163,255,0.5), transparent 24%), linear-gradient(135deg, #0b285d, #1552bc 62%, #0d3b9a); color: white; border: 0; }
         .checkout-panel h2, .checkout-panel .text-muted { color: white; }
@@ -200,6 +202,10 @@
         }
         .agent-intervention strong { color: #ffd166; }
         .intervention-button { margin-top: 10px; margin-right: 8px; background: #ffd166; color: #17213a; border: 0; border-radius: 6px; padding: 8px 12px; font-weight: 700; cursor: pointer; }
+        .recovery-timeline { display: grid; gap: 7px; margin-top: 12px; }
+        .timeline-step { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #dce9ff; }
+        .timeline-step::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #ffd166; box-shadow: 0 0 0 3px rgba(255, 209, 102, 0.18); }
+        .timeline-step--current::before { background: #8ecae6; box-shadow: 0 0 0 3px rgba(142, 202, 230, 0.18); }
 
         @media (max-width: 768px) {
             .two-col { grid-template-columns: 1fr; }
@@ -214,7 +220,7 @@
     <div class="header">
         <div class="logo-area">
             <div class="logo-icon">₹</div>
-            <h1>Revenue Recovery <span>· Razorpay Buildathon</span></h1>
+            <h1>Revenue Recovery <span>· Operations Console</span></h1>
         </div>
         <div class="status-badge">● Agent Live · Auto‑recovery active</div>
     </div>
@@ -222,7 +228,7 @@
     <div class="panel checkout-panel" style="margin-bottom:28px;">
         <div class="checkout-kicker">Razorpay test environment · no real money</div>
         <h2>Recover revenue at the moment payment fails.</h2>
-        <p class="checkout-copy">Launch a real Razorpay Test Checkout, verify the payment, and route failures into the recovery agent with a visible decision trail.</p>
+        <p class="checkout-copy">Run a Razorpay test payment, observe the failure, and let the recovery agent create the next best payment action.</p>
         <div class="simulator">
             <label>Test amount (INR)<input id="checkoutAmount" type="number" min="1" value="500" /></label>
             <label>Customer name<input id="checkoutCustomer" value="Buildathon Demo" /></label>
@@ -240,7 +246,7 @@
     </div>
 
     <div class="panel" style="margin-bottom:28px;">
-        <h2>Live Event Simulator</h2>
+        <h2>Recovery Event Tester</h2>
         <div class="simulator">
             <label>Workflow
                 <select id="workflowInput">
@@ -304,6 +310,7 @@
 
 <script>
     let chartInstance = null;
+    let caseWatcher = null;
 
     async function fetchMetrics() {
         const res = await fetch('/api/agent/metrics');
@@ -330,15 +337,42 @@
 
     async function startRecoveryAction(action, amount, customer) {
         if (action !== 'RETRY' && action !== 'OFFER_UPI') return;
-        document.getElementById('checkoutAmount').value = amount;
-        document.getElementById('checkoutCustomer').value = customer;
-        await startRazorpayCheckout();
+        const resultEl = document.getElementById('checkoutResult');
+        try {
+            document.getElementById('checkoutAmount').value = amount;
+            document.getElementById('checkoutCustomer').value = customer;
+            resultEl.textContent = action === 'RETRY' ? 'Creating a fresh retry payment...' : 'Opening an alternate payment checkout...';
+            await startRazorpayCheckout();
+        } catch (error) {
+            resultEl.textContent = `Retry could not start: ${error.message}`;
+        }
     }
 
     function escapeHtml(value) {
         return String(value).replace(/[&<>"']/g, character => ({
             '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
         }[character]));
+    }
+
+    function watchRecoveryCase(auditId, resultEl) {
+        if (!auditId) return;
+        if (caseWatcher) clearInterval(caseWatcher);
+        caseWatcher = setInterval(async () => {
+            try {
+                const response = await fetch(`/api/agent/cases/${auditId}`);
+                if (!response.ok) return;
+                const data = await response.json();
+                const recoveryCase = data.case;
+                if (recoveryCase.paymentStatus === 'captured') {
+                    clearInterval(caseWatcher);
+                    caseWatcher = null;
+                    resultEl.innerHTML = `<div class="agent-intervention"><strong>Payment recovered</strong><br><span class="badge badge--success">Razorpay payment captured</span><br>₹${escapeHtml(recoveryCase.amount)} recovered for ${escapeHtml(recoveryCase.customer)}.<br><span class="text-muted">Recovery case #${escapeHtml(recoveryCase.id)} closed automatically.</span></div>`;
+                    updateDashboard();
+                }
+            } catch (error) {
+                console.error('Recovery case polling error:', error);
+            }
+        }, 5000);
     }
 
     function getBadge(type) {
@@ -356,6 +390,17 @@
         if (action === 'RETRY') return 'badge--success';
         if (action === 'NOTIFY') return 'badge--info';
         return 'badge--warning';
+    }
+
+    async function resolveEscalation(id) {
+        try {
+            const response = await fetch(`/api/agent/audit/${id}/resolve`, { method: 'POST' });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Could not resolve case');
+            updateDashboard();
+        } catch (error) {
+            console.error('Resolve escalation error:', error);
+        }
     }
 
     async function updateDashboard() {
@@ -387,6 +432,10 @@
                 <div class="metric-card">
                     <div class="label">Amount Recovered</div>
                     <div class="value">₹${metrics.recoveredAmount || 0}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="label">Live Revenue at Risk</div>
+                    <div class="value">₹${metrics.atRiskAmount || 0}</div>
                 </div>
             `;
 
@@ -436,8 +485,10 @@
                 queueEl.innerHTML = escalations.map(a => `
                     <div class="escalation-item">
                         <strong>${a.customer}</strong> · ₹${a.amount} · ${a.lossType}
+                        <span class="badge ${a.priority?.label === 'HIGH' ? 'badge--danger' : 'badge--warning'}" style="margin-left:8px;">${a.priority?.label || 'HIGH'} PRIORITY</span>
                         <span class="badge badge--escalate" style="margin-left:8px;">ESCALATED</span>
                         <p style="font-size:13px; color:#64748b; margin-top:4px;">${a.reason}</p>
+                        <button class="resolve-button" onclick="resolveEscalation(${a.id})">Mark resolved</button>
                     </div>
                 `).join('');
             }
@@ -460,12 +511,26 @@
                     amount: Number(document.getElementById('amountInput').value),
                     reason: document.getElementById('reasonInput').value,
                     language: document.getElementById('languageInput').value,
-                    promiseDate: document.getElementById('promiseDateInput').value || undefined
+                    promiseDate: document.getElementById('promiseDateInput').value || undefined,
+                    source: 'simulator'
                 })
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || 'Recovery request failed');
-            resultEl.innerHTML = `<strong>${data.recovery.action}</strong> · ${escapeHtml(data.recovery.rootCause)}<br>${escapeHtml(data.recovery.message)} ${data.recovery.aiFallback ? '<span class="badge badge--danger">AI fallback</span>' : '<span class="badge badge--success">OpenRouter live</span>'}`;
+            const decision = data.recovery;
+            resultEl.innerHTML = `
+                <div class="agent-intervention">
+                    <span class="badge ${decision.aiFallback ? 'badge--danger' : 'badge--success'}">${decision.aiFallback ? 'Local fallback' : 'Gemini AI'}</span>
+                    <strong>Action: ${escapeHtml(decision.action)}</strong><br>
+                    <b>Why:</b> ${escapeHtml(decision.rootCause)}<br>
+                    <b>Customer message:</b> ${escapeHtml(decision.message)}
+                    ${decision.timeline ? `<div class="recovery-timeline">${decision.timeline.map(step => `<div class="timeline-step ${step.status === 'current' ? 'timeline-step--current' : ''}">${escapeHtml(step.label)}</div>`).join('')}</div>` : ''}
+                    ${decision.paymentLink ? `<br><a class="intervention-button" href="${escapeHtml(decision.paymentLink)}" target="_blank" rel="noopener">Pay now with UPI</a>` : ''}
+                    ${(decision.action === 'RETRY' || decision.action === 'OFFER_UPI') ? `<button class="intervention-button" data-action="RETRY" data-amount="${Number(document.getElementById('amountInput').value)}" data-customer="${escapeHtml(document.getElementById('customerInput').value)}" onclick="startRecoveryAction(this.dataset.action, Number(this.dataset.amount), this.dataset.customer)">Retry payment</button>` : ''}
+                </div>
+            `;
+            speakMessage(decision.message, decision.language || 'ENGLISH');
+            watchRecoveryCase(decision.auditId, resultEl);
             updateDashboard();
         } catch (error) {
             resultEl.textContent = error.message;
@@ -516,7 +581,7 @@
                 const recovery = await fetch('/api/agent/recover', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ lossType: 'PAYMENT_FAILURE', amount, customer, reason: error.description || 'Razorpay payment failed' })
+                    body: JSON.stringify({ lossType: 'PAYMENT_FAILURE', amount, customer, reason: error.description || 'Razorpay payment failed', source: 'checkout' })
                 });
                 const result = await recovery.json();
                 if (!recovery.ok || !result.recovery) {
@@ -532,11 +597,15 @@
                         <strong>Action: ${escapeHtml(decision.action || 'ESCALATE')}</strong><br>
                         <b>Why:</b> ${escapeHtml(decision.rootCause || 'Not provided')}<br>
                         <b>Customer support message:</b> ${escapeHtml(decision.message || 'Not provided')}
+                        ${decision.nextRetryAt ? `<br><b>Next retry:</b> ${new Date(decision.nextRetryAt).toLocaleString()} · attempt ${Number(decision.retryCount || 0) + 1} of ${decision.retryLimit || 3}` : ''}
+                        ${decision.timeline ? `<div class="recovery-timeline">${decision.timeline.map(step => `<div class="timeline-step ${step.status === 'current' ? 'timeline-step--current' : ''}">${escapeHtml(step.label)}</div>`).join('')}</div>` : ''}
                         <button class="voice-button" title="Play recovery message" onclick="speakMessage(${JSON.stringify(decision.message || 'Please contact support.')}, ${JSON.stringify(decision.language || 'ENGLISH')})">🔊 Play message</button>
-                        ${decision.action === 'RETRY' || decision.action === 'OFFER_UPI' ? `<br><button class="intervention-button" onclick="startRecoveryAction(${JSON.stringify(decision.action)}, ${amount}, ${JSON.stringify(customer)})">${decision.action === 'OFFER_UPI' ? 'Try payment with UPI' : 'Retry payment'}</button>` : ''}
+                        ${decision.paymentLink ? `<br><a class="intervention-button" href="${escapeHtml(decision.paymentLink)}" target="_blank" rel="noopener">Complete payment now</a>` : ''}
+                        ${(decision.action === 'RETRY' || decision.action === 'OFFER_UPI') ? `<button class="intervention-button" data-action="RETRY" data-amount="${amount}" data-customer="${escapeHtml(customer)}" onclick="startRecoveryAction(this.dataset.action, Number(this.dataset.amount), this.dataset.customer)">Retry payment</button>` : ''}
                     </div>
                 `;
                 speakMessage(decision.message || 'Please contact support.', decision.language || 'ENGLISH');
+                watchRecoveryCase(decision.auditId, resultEl);
                 updateDashboard();
             });
             async function handleCheckoutDismiss() {
@@ -550,7 +619,8 @@
                             lossType: 'CHECKOUT_DROPOFF',
                             amount,
                             customer,
-                            reason: 'Customer exited Razorpay Checkout before completing payment'
+                            reason: 'Customer exited Razorpay Checkout before completing payment',
+                            source: 'checkout'
                         })
                     });
                     const dropoff = await dropoffResponse.json();

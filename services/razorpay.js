@@ -32,6 +32,18 @@ async function createOrder(amount, currency = 'INR', notes = {}) {
     }
 }
 
+async function createPaymentLink(amount, customer, description = 'Complete your payment') {
+    const razorpay = getRazorpayClient();
+    return razorpay.paymentLink.create({
+        amount: Math.round(Number(amount) * 100),
+        currency: 'INR',
+        description,
+        customer: { name: customer || 'Customer' },
+        expire_by: Math.floor(Date.now() / 1000) + (24 * 60 * 60),
+        notes: { source: 'revenue-recovery-agent' }
+    });
+}
+
 async function fetchPayment(paymentId) {
     try {
         const razorpay = getRazorpayClient();
@@ -60,4 +72,4 @@ function verifyWebhookSignature(rawBody, signature) {
     return received.length === expectedBuffer.length && crypto.timingSafeEqual(expectedBuffer, received);
 }
 
-module.exports = { createOrder, fetchPayment, verifyPaymentSignature, verifyWebhookSignature };
+module.exports = { createOrder, createPaymentLink, fetchPayment, verifyPaymentSignature, verifyWebhookSignature };

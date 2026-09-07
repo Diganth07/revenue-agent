@@ -57,6 +57,16 @@ const workflowDefinitions = {
     }
 };
 
+function getPriority(amount, retryCount, action) {
+    const score = (Number(amount) >= 10000 ? 2 : Number(amount) >= 2000 ? 1 : 0)
+        + (Number(retryCount) >= 2 ? 2 : Number(retryCount) === 1 ? 1 : 0)
+        + (action === 'ESCALATE' ? 2 : 0);
+    return {
+        score,
+        label: score >= 4 ? 'HIGH' : score >= 2 ? 'MEDIUM' : 'LOW'
+    };
+}
+
 async function handleRecovery(lossType, amount, customer, reason, options = {}) {
     const workflow = workflowDefinitions[lossType] || workflowDefinitions.PAYMENT_FAILURE;
     const retryCount = Number(options.retryCount || 0);
@@ -77,11 +87,19 @@ async function handleRecovery(lossType, amount, customer, reason, options = {}) 
     if (shouldEscalate) analysis.action = 'ESCALATE';
     if (!workflow.actions.includes(analysis.action)) analysis.action = workflow.actions[0];
 
+    const retryScheduleMinutes = [5, 30, 120];
+    const nextRetryMinutes = analysis.action === 'RETRY'
+        ? retryScheduleMinutes[Math.min(boundedRetryCount, retryScheduleMinutes.length - 1)]
+        : null;
+    const nextRetryAt = nextRetryMinutes
+        ? new Date(Date.now() + nextRetryMinutes * 60 * 1000).toISOString()
+        : null;
+
     // Step 2: Execute action
     let actionResult;
     switch (analysis.action) {
         case 'RETRY':
-            actionResult = 'Retry scheduled.';
+            actionResult = `Retry ${boundedRetryCount + 1} scheduled in ${nextRetryMinutes} minutes.`;
             break;
         case 'NOTIFY':
             actionResult = `Notification sent: "${analysis.message}"`;
@@ -120,6 +138,11 @@ async function handleRecovery(lossType, amount, customer, reason, options = {}) 
         provider: analysis.provider || 'openrouter',
         aiFallback: Boolean(analysis.fallback),
         promiseDate: options.promiseDate || null,
+        source: options.source || 'api',
+        nextRetryAt,
+        nextRetryMinutes,
+        retryLimit: 3,
+        priority: getPriority(amount, boundedRetryCount, analysis.action),
         resolved: false
     };
     auditLog.push(entry);
@@ -180,12 +203,19 @@ function getMetrics() {
         recoveredAmount: metrics.recoveredAmount,
         byLossType: metrics.byLossType,
         auditLog: auditLog.slice(-20),
-        openPromises: promises.filter(item => item.status === 'OPEN').length
+        openPromises: promises.filter(item => item.status === 'OPEN').length,
+        atRiskAmount: auditLog
+            .filter(item => !item.resolved && ['api', 'checkout', 'razorpay-webhook'].includes(item.source))
+            .reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
     };
 }
 
 function getAuditLog() {
     return auditLog;
+}
+
+function getAuditEntry(id) {
+    return auditLog.find(item => item.id === Number(id)) || null;
 }
 
 function getPromises() {
@@ -196,6 +226,41 @@ function getWorkflows() {
     return Object.entries(workflowDefinitions).map(([id, definition]) => ({ id, ...definition }));
 }
 
+function resolveAuditEntry(id) {
+    const entry = auditLog.find(item => item.id === Number(id));
+    if (!entry) return null;
+    entry.resolved = true;
+    entry.resolvedAt = new Date().toISOString();
+    saveStore();
+    return entry;
+}
+
+function attachPaymentLink(auditId, paymentLink) {
+    const entry = auditLog.find(item => item.id === Number(auditId));
+    if (!entry) return null;
+    entry.paymentLinkId = paymentLink.id || null;
+    entry.paymentLinkUrl = paymentLink.short_url || paymentLink.shortUrl || null;
+    entry.paymentLinkStatus = paymentLink.status || 'created';
+    saveStore();
+    return entry;
+}
+
+function recordPaymentLinkPaid(paymentLinkId, paymentId, amount) {
+    const entry = auditLog.find(item => item.paymentLinkId === paymentLinkId);
+    if (!entry || entry.paymentStatus === 'captured') return entry;
+
+    entry.paymentStatus = 'captured';
+    entry.paymentId = paymentId || null;
+    entry.paymentLinkStatus = 'paid';
+    entry.resolved = true;
+    entry.resolvedAt = new Date().toISOString();
+    entry.result = 'Payment recovered through the AI-generated Razorpay payment link.';
+    metrics.totalRecovered++;
+    metrics.recoveredAmount += Number(amount || entry.amount) || 0;
+    saveStore();
+    return entry;
+}
+
 function resetStore() {
     auditLog = [];
     promises = [];
@@ -203,4 +268,4 @@ function resetStore() {
     saveStore();
 }
 
-module.exports = { handleRecovery, recordSuccessfulPayment, getMetrics, getAuditLog, getPromises, getWorkflows, resetStore };
+module.exports = { handleRecovery, recordSuccessfulPayment, getMetrics, getAuditLog, getAuditEntry, getPromises, getWorkflows, resolveAuditEntry, attachPaymentLink, recordPaymentLinkPaid, resetStore };
