@@ -1,6 +1,6 @@
 ﻿# Revenue Recovery Agent
 
-An AI revenue recovery control plane for Razorpay payment and receivables events. Gemini analyzes failures and recommends the next action; the recovery service applies workflow policy, audit logging, and promise tracking.
+An AI-assisted revenue recovery service for payment failures and receivables events. The configured AI provider recommends an action; the recovery service applies workflow policy, audit logging, and promise tracking.
 
 ## Run locally
 
@@ -26,25 +26,29 @@ The local recovery engine remains available as a fallback when Gemini is unavail
 
 ## Demo flow
 
-1. Open the dashboard and use **Live Event Simulator** to trigger a recovery workflow.
-2. Use the Razorpay test checkout to see the Gemini recovery intervention after a failed payment.
-3. Select **Hinglish voice** to hear the customer message from the audit trail.
-4. Run the batch recovery endpoint to exercise multiple workflows at once.
+1. Open **Payments** and start a hosted checkout using test credentials.
+2. Review successful, failed, and dismissed attempts in **Audit & promises**.
+3. Use **APIs & integrations** to review the registered routes and storage status.
+4. Use the batch recovery API to exercise multiple workflows.
 
 ## API
 
 - `POST /api/agent/recover` - run one recovery event
-- `POST /api/agent/create-order` - create a Razorpay test-mode order
-- `POST /api/agent/verify-payment` - verify a successful Razorpay Checkout payment
-- `POST /api/agent/webhook` - receive signed Razorpay events, including `payment.failed`
+- `POST /api/agent/create-order` - create a hosted checkout order and audit entry
+- `POST /api/agent/verify-payment` - verify and record a successful payment
+- `POST /api/agent/checkout/:orderId/dismiss` - record a closed checkout
+- `POST /api/agent/webhook` - receive signed payment events, including `payment.failed`
 - `POST /api/agent/batch-recover` - run a multi-workflow demo batch
 - `GET /api/agent/metrics` - recovery metrics
+- `GET /api/agent/status` - registered API routes and integration readiness (never exposes secrets)
 - `GET /api/agent/audit` - audit trail
 - `GET /api/agent/promises` - promise-to-pay records
 - `GET /api/agent/workflows` - supported playbooks
 - `POST /api/agent/reset-demo` - clear local demo data
 
-Generated local state is stored in `data/recovery-store.json` and is ignored by Git. Payment retries and outbound notifications are currently simulated and audited; connect those action adapters before production use.
+Local state is stored in the ignored `data/recovery-store.sqlite` SQLite database. On first startup, any existing `data/recovery-store.json` history is imported once and left in place as a backup. Set `RECOVERY_DB_PATH` to choose another database file. The built-in SQLite module requires Node.js 22.13 or newer.
+
+Vercel's `/tmp` filesystem is temporary and is not shared between serverless instances. The status endpoint reports this as non-persistent; use a hosted database for durable history in a Vercel deployment. Payment retries and outbound notifications are currently simulated and audited; connect those action adapters before production use.
 
 ## Postman
 
@@ -55,12 +59,12 @@ Import the ready-to-use collection and environment from:
 
 Select **Revenue Agent - Local** and run **Agent health** followed by **Run Gemini recovery**.
 
-## Razorpay test mode
+## Hosted checkout
 
-The dashboard's **Razorpay Test Checkout** creates a real test-mode order. Use Razorpay test credentials and test cards only. Configure a Razorpay webhook pointing to:
+The dashboard's hosted checkout creates a real order. Use test credentials and test payment methods only. Configure a payment webhook pointing to:
 
 ```text
 POST https://your-public-host/api/agent/webhook
 ```
 
-Set the same webhook secret in `RAZORPAY_WEBHOOK_SECRET`. The webhook verifies the signature and sends `payment.failed` events into the recovery agent.
+Set the webhook secret in the matching environment variable from `.env.example`. The webhook verifies the signature and sends failed-payment events into the recovery agent.

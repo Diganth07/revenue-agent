@@ -1,8 +1,11 @@
 const fs = require('fs');
 const path = require('path');
+const { DatabaseSync } = require('node:sqlite');
 const { analyzeWithOpenRouter } = require('./openrouter');
 
-const storePath = process.env.RECOVERY_STORE_PATH
+const databasePath = process.env.RECOVERY_DB_PATH
+    || (process.env.VERCEL ? path.join('/tmp', 'recovery-store.sqlite') : path.join(__dirname, '..', 'data', 'recovery-store.sqlite'));
+const legacyStorePath = process.env.RECOVERY_STORE_PATH
     || (process.env.VERCEL ? path.join('/tmp', 'recovery-store.json') : path.join(__dirname, '..', 'data', 'recovery-store.json'));
 const emptyStore = () => ({ auditLog: [], promises: [], metrics: {
     totalAttempted: 0,
@@ -12,17 +15,44 @@ const emptyStore = () => ({ auditLog: [], promises: [], metrics: {
     byLossType: {}
 } });
 
+fs.mkdirSync(path.dirname(databasePath), { recursive: true });
+const database = new DatabaseSync(databasePath);
+database.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA synchronous = FULL;
+    CREATE TABLE IF NOT EXISTS recovery_state (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        payload TEXT NOT NULL
+    );
+`);
+const readState = database.prepare('SELECT payload FROM recovery_state WHERE id = 1');
+const writeState = database.prepare(`
+    INSERT INTO recovery_state (id, payload) VALUES (1, ?)
+    ON CONFLICT(id) DO UPDATE SET payload = excluded.payload
+`);
+let migratedFromJson = false;
+
 function loadStore() {
-    try {
-        return JSON.parse(fs.readFileSync(storePath, 'utf8'));
-    } catch (error) {
-        return emptyStore();
+    const savedState = readState.get();
+    if (savedState) return JSON.parse(savedState.payload);
+
+    if (fs.existsSync(legacyStorePath)) {
+        let legacyState;
+        try {
+            legacyState = JSON.parse(fs.readFileSync(legacyStorePath, 'utf8'));
+        } catch (error) {
+            throw new Error(`Could not import the existing recovery store: ${error.message}`);
+        }
+        writeState.run(JSON.stringify(legacyState));
+        migratedFromJson = true;
+        return legacyState;
     }
+
+    return emptyStore();
 }
 
 function saveStore() {
-    fs.mkdirSync(path.dirname(storePath), { recursive: true });
-    fs.writeFileSync(storePath, JSON.stringify({ auditLog, promises, metrics }, null, 2));
+    writeState.run(JSON.stringify({ auditLog, promises, metrics }));
 }
 
 const store = loadStore();
@@ -139,6 +169,7 @@ async function handleRecovery(lossType, amount, customer, reason, options = {}) 
         aiFallback: Boolean(analysis.fallback),
         promiseDate: options.promiseDate || null,
         source: options.source || 'api',
+        orderId: options.orderId || null,
         nextRetryAt,
         nextRetryMinutes,
         retryLimit: 3,
@@ -146,6 +177,7 @@ async function handleRecovery(lossType, amount, customer, reason, options = {}) 
         resolved: false
     };
     auditLog.push(entry);
+    if (options.orderId) updateCheckoutStatus(options.orderId, 'failed', options.paymentId);
 
     if (analysis.action === 'TRACK_PROMISE' || options.promiseDate) {
         promises.push({
@@ -169,7 +201,47 @@ async function handleRecovery(lossType, amount, customer, reason, options = {}) 
     return { entry, analysis };
 }
 
-function recordSuccessfulPayment(amount, customer, paymentId = null) {
+function recordCheckoutStarted(amount, customer, orderId) {
+    const entry = {
+        id: auditLog.length + 1,
+        timestamp: new Date().toISOString(),
+        lossType: 'CHECKOUT_STARTED',
+        amount: Number(amount) || 0,
+        customer,
+        reason: 'Customer started hosted checkout',
+        action: 'PAYMENT_PENDING',
+        message: 'Payment checkout opened.',
+        rootCause: 'Awaiting customer payment.',
+        result: 'Hosted payment checkout opened; awaiting result.',
+        workflow: 'Payment checkout',
+        orderId,
+        paymentStatus: 'created',
+        source: 'checkout-session',
+        resolved: false
+    };
+    auditLog.push(entry);
+    saveStore();
+    return entry;
+}
+
+function updateCheckoutStatus(orderId, status, paymentId = null) {
+    const entry = auditLog.find(item => item.lossType === 'CHECKOUT_STARTED' && item.orderId === orderId);
+    if (!entry || entry.paymentStatus !== 'created') return entry || null;
+
+    entry.paymentStatus = status;
+    entry.paymentId = paymentId;
+    entry.resolved = status !== 'created';
+    entry.result = status === 'captured'
+        ? 'Payment captured and verified.'
+        : status === 'failed'
+            ? 'Payment failed; recovery follow-up recorded.'
+            : 'Checkout closed before payment.';
+    saveStore();
+    return entry;
+}
+
+function recordSuccessfulPayment(amount, customer, paymentId = null, orderId = null) {
+    if (orderId) updateCheckoutStatus(orderId, 'captured', paymentId);
     const numericAmount = Number(amount) || 0;
     const entry = {
         id: auditLog.length + 1,
@@ -184,6 +256,7 @@ function recordSuccessfulPayment(amount, customer, paymentId = null) {
         result: 'Revenue recovered through successful payment.',
         workflow: 'Payment recovery',
         paymentId,
+        orderId,
         resolved: true
     };
 
@@ -226,13 +299,13 @@ function getWorkflows() {
     return Object.entries(workflowDefinitions).map(([id, definition]) => ({ id, ...definition }));
 }
 
-function resolveAuditEntry(id) {
-    const entry = auditLog.find(item => item.id === Number(id));
-    if (!entry) return null;
-    entry.resolved = true;
-    entry.resolvedAt = new Date().toISOString();
-    saveStore();
-    return entry;
+function getStorageStatus() {
+    return {
+        engine: 'SQLite',
+        persistent: !process.env.VERCEL,
+        migratedFromJson,
+        note: process.env.VERCEL ? 'The serverless filesystem is temporary; use a hosted database for durable storage.' : null
+    };
 }
 
 function attachPaymentLink(auditId, paymentLink) {
@@ -268,4 +341,4 @@ function resetStore() {
     saveStore();
 }
 
-module.exports = { handleRecovery, recordSuccessfulPayment, getMetrics, getAuditLog, getAuditEntry, getPromises, getWorkflows, resolveAuditEntry, attachPaymentLink, recordPaymentLinkPaid, resetStore };
+module.exports = { handleRecovery, recordCheckoutStarted, updateCheckoutStatus, recordSuccessfulPayment, getMetrics, getAuditLog, getAuditEntry, getPromises, getWorkflows, getStorageStatus, attachPaymentLink, recordPaymentLinkPaid, resetStore };

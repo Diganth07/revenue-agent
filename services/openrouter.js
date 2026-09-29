@@ -45,12 +45,13 @@ function localRecoveryDecision(failureReason, amount, context) {
 }
 
 async function analyzeWithOpenRouter(failureReason, amount, context = {}) {
-    if (process.env.AI_PROVIDER === 'local') {
+    const configuredProvider = (process.env.AI_PROVIDER || '').toLowerCase();
+    if (configuredProvider === 'local') {
         return localRecoveryDecision(failureReason, amount, context);
     }
 
     const geminiApiKey = process.env.GEMINI_API_KEY || process.env.gemini_api_key;
-    if (process.env.AI_PROVIDER === 'gemini' || geminiApiKey) {
+    if (configuredProvider === 'gemini' || (!configuredProvider && geminiApiKey)) {
         return analyzeWithGemini(failureReason, amount, context, geminiApiKey);
     }
 

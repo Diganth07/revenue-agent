@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Revenue Recovery · Monitoring</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>Revenue Desk | Recovery Operations</title>
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -212,8 +211,9 @@
             .header { flex-direction: column; align-items: start; }
         }
     </style>
+    <link rel="stylesheet" href="/app.css" />
 </head>
-<body>
+<body><div id="app"></div><template>
 <div class="container">
 
     <!-- Header -->
@@ -392,17 +392,6 @@
         return 'badge--warning';
     }
 
-    async function resolveEscalation(id) {
-        try {
-            const response = await fetch(`/api/agent/audit/${id}/resolve`, { method: 'POST' });
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.error || 'Could not resolve case');
-            updateDashboard();
-        } catch (error) {
-            console.error('Resolve escalation error:', error);
-        }
-    }
-
     async function updateDashboard() {
         try {
             const metrics = await fetchMetrics();
@@ -488,7 +477,6 @@
                         <span class="badge ${a.priority?.label === 'HIGH' ? 'badge--danger' : 'badge--warning'}" style="margin-left:8px;">${a.priority?.label || 'HIGH'} PRIORITY</span>
                         <span class="badge badge--escalate" style="margin-left:8px;">ESCALATED</span>
                         <p style="font-size:13px; color:#64748b; margin-top:4px;">${a.reason}</p>
-                        <button class="resolve-button" onclick="resolveEscalation(${a.id})">Mark resolved</button>
                     </div>
                 `).join('');
             }
@@ -641,5 +629,7 @@
     updateDashboard();
     setInterval(updateDashboard, 15000);
 </script>
+</template>
+<script src="/app.js?v=20260929-audio-audit" defer></script>
 </body>
 </html>

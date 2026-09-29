@@ -6,5 +6,6 @@ dist/
 build/
 .postman/
 data/recovery-store.json
+data/recovery-store.sqlite*
 .vercel
 .env*

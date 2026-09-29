@@ -1,11 +1,47 @@
 const express = require('express');
 const router = express.Router();
 const { createOrder, createPaymentLink, fetchPayment, verifyPaymentSignature, verifyWebhookSignature } = require('../services/razorpay');
-const { handleRecovery, recordSuccessfulPayment, getMetrics, getAuditLog, getAuditEntry, getPromises, getWorkflows, resolveAuditEntry, attachPaymentLink, recordPaymentLinkPaid, resetStore } = require('../services/recovery');
+const { handleRecovery, recordCheckoutStarted, updateCheckoutStatus, recordSuccessfulPayment, getMetrics, getAuditLog, getAuditEntry, getPromises, getWorkflows, getStorageStatus, attachPaymentLink, recordPaymentLinkPaid, resetStore } = require('../services/recovery');
 
 // Test route
 router.get('/test', (req, res) => {
     res.json({ message: 'Agent route is working!' });
+});
+
+router.get('/status', (req, res) => {
+    const hasGeminiKey = Boolean(process.env.GEMINI_API_KEY || process.env.gemini_api_key);
+    const hasOpenRouterKey = Boolean(process.env.OPENROUTER_API_KEY);
+    const configuredProvider = (process.env.AI_PROVIDER || '').toLowerCase();
+    const provider = configuredProvider === 'local'
+        ? 'local'
+        : configuredProvider === 'gemini' || (!configuredProvider && hasGeminiKey)
+            ? 'gemini'
+            : configuredProvider === 'openrouter' || hasOpenRouterKey
+                ? 'openrouter'
+                : 'local';
+    const aiConfigured = provider === 'local'
+        || (provider === 'gemini' && hasGeminiKey)
+        || (provider === 'openrouter' && hasOpenRouterKey);
+
+    res.json({
+        success: true,
+        ai: { provider, configured: aiConfigured, fallback: !aiConfigured },
+        razorpay: {
+            configured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
+            webhookConfigured: Boolean(process.env.RAZORPAY_WEBHOOK_SECRET)
+        },
+        storage: getStorageStatus(),
+        endpoints: [
+            'GET /api/agent/test', 'GET /api/agent/status',
+            'GET /api/agent/metrics', 'GET /api/agent/audit', 'GET /api/agent/workflows',
+            'GET /api/agent/promises', 'GET /api/agent/cases/:id',
+            'POST /api/agent/recover', 'POST /api/agent/batch-recover',
+            'POST /api/agent/create-order', 'POST /api/agent/verify-payment',
+            'POST /api/agent/checkout/:orderId/dismiss',
+            'POST /api/agent/webhook', 'POST /api/agent/reset-demo',
+            'POST /api/agent/simulate-payment'
+        ]
+    });
 });
 
 // Recovery endpoint
@@ -70,12 +106,14 @@ router.post('/create-order', async (req, res) => {
         if (!order) {
             return res.status(500).json({ error: 'Failed to create order' });
         }
+        const checkoutEntry = recordCheckoutStarted(amount, customer, order.id);
         res.json({
             success: true,
             orderId: order.id,
             amount: order.amount / 100,
             currency: order.currency,
-            keyId: process.env.RAZORPAY_KEY_ID
+            keyId: process.env.RAZORPAY_KEY_ID,
+            auditId: checkoutEntry.id
         });
     } catch (error) {
         console.error('Create order error:', error);
@@ -93,7 +131,7 @@ router.post('/verify-payment', async (req, res) => {
         const payment = await fetchPayment(paymentId);
         const paymentStatus = payment?.status || 'captured';
         const recoveryEntry = paymentStatus === 'captured'
-            ? recordSuccessfulPayment(amount, customer, paymentId)
+            ? recordSuccessfulPayment(amount, customer, paymentId, orderId)
             : null;
         res.json({
             success: true,
@@ -107,6 +145,12 @@ router.post('/verify-payment', async (req, res) => {
         console.error('Payment verification error:', error);
         res.status(500).json({ success: false, error: error.message });
     }
+});
+
+router.post('/checkout/:orderId/dismiss', (req, res) => {
+    const entry = updateCheckoutStatus(req.params.orderId, 'dismissed');
+    if (!entry) return res.status(404).json({ success: false, error: 'Checkout record not found' });
+    res.json({ success: true, entry });
 });
 
 router.post('/webhook', async (req, res) => {
@@ -206,12 +250,6 @@ router.get('/cases/:id', (req, res) => {
 
 router.get('/workflows', (req, res) => {
     res.json(getWorkflows());
-});
-
-router.post('/audit/:id/resolve', (req, res) => {
-    const entry = resolveAuditEntry(req.params.id);
-    if (!entry) return res.status(404).json({ success: false, error: 'Audit entry not found' });
-    res.json({ success: true, entry });
 });
 
 router.get('/promises', (req, res) => {
