@@ -232,11 +232,17 @@ function updateCheckoutStatus(orderId, status, paymentId = null) {
     entry.paymentStatus = status;
     entry.paymentId = paymentId;
     entry.resolved = status !== 'created';
+    entry.action = status === 'captured'
+        ? 'PAYMENT_CAPTURED'
+        : status === 'failed'
+            ? 'PAYMENT_FAILED'
+            : 'CHECKOUT_ABANDONED';
     entry.result = status === 'captured'
         ? 'Payment captured and verified.'
         : status === 'failed'
             ? 'Payment failed; recovery follow-up recorded.'
             : 'Checkout closed before payment.';
+    if (status === 'dismissed') entry.reason = 'Customer closed checkout without completing payment';
     saveStore();
     return entry;
 }

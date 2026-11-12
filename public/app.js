@@ -6,7 +6,58 @@ const viewTitles = {
     integrations: 'API & integrations'
 };
 const state = { status: null, metrics: null, audit: [], promises: [], filter: '' };
+const auditHistoryKey = 'revenue-agent-audit-history';
 let toastTimer;
+
+function auditEntryKey(entry) {
+    if (entry.lossType === 'CHECKOUT_STARTED' && entry.orderId) return `${entry.lossType}:order:${entry.orderId}`;
+    if (entry.orderId && entry.paymentId) return `${entry.lossType}:order:${entry.orderId}:payment:${entry.paymentId}`;
+    return `${entry.lossType}:${entry.timestamp}:${entry.id}`;
+}
+
+function getLocalAuditHistory() {
+    try {
+        const history = JSON.parse(localStorage.getItem(auditHistoryKey) || '[]');
+        if (!Array.isArray(history)) throw new Error('Audit history must be a list.');
+        return history.filter(entry => entry && typeof entry === 'object' && entry.lossType && entry.timestamp);
+    } catch (error) {
+        console.error('Could not read browser audit history:', error);
+        showToast('Browser audit history could not be loaded.', true);
+        return [];
+    }
+}
+
+function saveLocalAuditEntry(entry) {
+    try {
+        const history = getLocalAuditHistory();
+        const key = auditEntryKey(entry);
+        const index = history.findIndex(item => auditEntryKey(item) === key);
+        if (index === -1) history.push(entry);
+        else history[index] = { ...history[index], ...entry };
+        localStorage.setItem(auditHistoryKey, JSON.stringify(history.slice(-500)));
+    } catch (error) {
+        console.error('Could not save browser audit history:', error);
+        showToast('Could not save audit activity in this browser.', true);
+    }
+}
+
+function saveLocalAuditHistory(history) {
+    try {
+        localStorage.setItem(auditHistoryKey, JSON.stringify(history.slice(-500)));
+    } catch (error) {
+        console.error('Could not save browser audit history:', error);
+        showToast('Could not save audit activity in this browser.', true);
+    }
+}
+
+function clearLocalAuditHistory() {
+    try {
+        localStorage.removeItem(auditHistoryKey);
+    } catch (error) {
+        console.error('Could not clear browser audit history:', error);
+        showToast('Could not clear audit activity in this browser.', true);
+    }
+}
 
 function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, character => ({
@@ -157,7 +208,11 @@ function renderMetrics() {
 }
 
 function actionBadge(action) {
-    const styles = { ESCALATE: 'badge--danger', RETRY: '', OFFER_UPI: 'badge--info', CHASE: 'badge--warning', TRACK_PROMISE: 'badge--info', PAYMENT_CAPTURED: '' };
+    const styles = {
+        ESCALATE: 'badge--danger', RETRY: '', OFFER_UPI: 'badge--info', CHASE: 'badge--warning',
+        TRACK_PROMISE: 'badge--info', PAYMENT_CAPTURED: '', PAYMENT_FAILED: 'badge--danger',
+        CHECKOUT_ABANDONED: 'badge--warning'
+    };
     return `<span class="badge ${styles[action] || 'badge--quiet'}">${escapeHtml(action || '—')}</span>`;
 }
 
@@ -166,6 +221,26 @@ function renderActivity() {
     document.getElementById('recent-activity').innerHTML = rows.length ? rows.map(entry => `
         <tr><td>${escapeHtml(entry.customer || '—')}</td><td>${escapeHtml((entry.lossType || '—').replaceAll('_', ' '))}</td><td>${money(entry.amount)}</td><td>${actionBadge(entry.action)}</td><td class="mono">${escapeHtml(new Date(entry.timestamp).toLocaleString())}</td></tr>
     `).join('') : '<tr><td colspan="5" class="empty-state">No activity yet. Run a recovery or batch demo to get started.</td></tr>';
+}
+
+function mergeCheckoutHistory(serverAudit) {
+    const auditByKey = new Map(serverAudit.map(entry => [auditEntryKey(entry), entry]));
+    const statusRank = { created: 0, dismissed: 1, failed: 2, captured: 3 };
+    for (const entry of getLocalAuditHistory()) {
+        const key = auditEntryKey(entry);
+        const existing = auditByKey.get(key);
+        if (!existing) {
+            auditByKey.set(key, entry);
+        } else if (entry.lossType === 'CHECKOUT_STARTED') {
+            const serverIsNewer = (statusRank[existing.paymentStatus] || 0) > (statusRank[entry.paymentStatus] || 0);
+            auditByKey.set(key, serverIsNewer
+                ? { ...entry, ...existing, id: existing.id }
+                : { ...existing, ...entry, id: existing.id });
+        } else {
+            auditByKey.set(key, { ...existing, ...entry, id: existing.id });
+        }
+    }
+    return [...auditByKey.values()].sort((left, right) => new Date(left.timestamp) - new Date(right.timestamp));
 }
 
 function renderAudit() {
@@ -239,7 +314,8 @@ async function refreshDashboard() {
     setApiHealth(online);
     state.status = online ? results[0].value : null;
     if (results[1].status === 'fulfilled') state.metrics = results[1].value;
-    if (results[2].status === 'fulfilled') state.audit = results[2].value;
+    state.audit = mergeCheckoutHistory(results[2].status === 'fulfilled' ? results[2].value : state.audit);
+    saveLocalAuditHistory(state.audit);
     if (results[3].status === 'fulfilled') state.promises = results[3].value;
     renderMetrics();
     renderActivity();
@@ -295,6 +371,23 @@ async function startCheckout(event) {
     button.textContent = 'Opening checkout...';
     try {
         const order = await request('/api/agent/create-order', { method: 'POST', body: JSON.stringify({ amount, customer }) });
+        saveLocalAuditEntry({
+            id: `browser-${order.orderId}`,
+            timestamp: new Date().toISOString(),
+            lossType: 'CHECKOUT_STARTED',
+            amount: Number(order.amount),
+            customer,
+            reason: 'Customer started hosted checkout',
+            action: 'PAYMENT_PENDING',
+            message: 'Payment checkout opened.',
+            rootCause: 'Awaiting customer payment.',
+            result: 'Hosted payment checkout opened; awaiting result.',
+            workflow: 'Payment checkout',
+            orderId: order.orderId,
+            paymentStatus: 'created',
+            source: 'checkout-session',
+            resolved: false
+        });
         await refreshDashboard();
         const checkout = new window.Razorpay({
             key: order.keyId, amount: Math.round(order.amount * 100), currency: order.currency,
@@ -303,17 +396,43 @@ async function startCheckout(event) {
             modal: {
                 ondismiss: async () => {
                     if (paymentResolved) return;
+                    const closedAt = new Date().toISOString();
+                    saveLocalAuditEntry({
+                        ...getLocalAuditHistory().find(entry => entry.lossType === 'CHECKOUT_STARTED' && entry.orderId === order.orderId),
+                        timestamp: closedAt,
+                        lossType: 'CHECKOUT_STARTED',
+                        orderId: order.orderId,
+                        customer,
+                        amount: Number(order.amount),
+                        reason: 'Customer closed checkout without completing payment',
+                        action: 'CHECKOUT_ABANDONED',
+                        result: 'Checkout closed before payment.',
+                        paymentStatus: 'dismissed',
+                        resolved: true
+                    });
                     try {
                         await request(`/api/agent/checkout/${encodeURIComponent(order.orderId)}/dismiss`, { method: 'POST', body: '{}' });
                         await refreshDashboard();
                         showToast('Checkout closed. The attempt was added to the audit.');
-                    } catch (error) { showToast(error.message, true); }
+                    } catch (error) {
+                        await refreshDashboard();
+                        showToast(`Checkout was saved in this browser, but the server could not update it: ${error.message}`, true);
+                    }
                 }
             },
             handler: async payment => {
                 paymentResolved = true;
                 try {
                     const result = await request('/api/agent/verify-payment', { method: 'POST', body: JSON.stringify({ ...payment, amount, customer }) });
+                    const checkout = getLocalAuditHistory().find(entry => entry.lossType === 'CHECKOUT_STARTED' && entry.orderId === order.orderId);
+                    if (checkout) saveLocalAuditEntry({
+                        ...checkout,
+                        action: 'PAYMENT_CAPTURED',
+                        paymentStatus: 'captured',
+                        result: 'Payment captured and verified.',
+                        resolved: true
+                    });
+                    if (result.recoveryEntry) saveLocalAuditEntry(result.recoveryEntry);
                     document.getElementById('payment-result').innerHTML = `<div class="result-box"><h3>Payment ${escapeHtml(result.paymentStatus)}</h3><p>Your payment was verified and recorded.</p></div>`;
                     showToast('Payment verified and recorded.');
                     await refreshDashboard();
@@ -323,6 +442,15 @@ async function startCheckout(event) {
         checkout.on('payment.failed', async event => {
             paymentResolved = true;
             const reason = event.error?.description || 'Payment could not be completed';
+            const checkoutEntry = getLocalAuditHistory().find(entry => entry.lossType === 'CHECKOUT_STARTED' && entry.orderId === order.orderId);
+            if (checkoutEntry) saveLocalAuditEntry({
+                ...checkoutEntry,
+                reason,
+                action: 'PAYMENT_FAILED',
+                result: 'Payment failed; recovery follow-up recorded.',
+                paymentStatus: 'failed',
+                resolved: true
+            });
             showToast('Payment failed. Sending event to recovery workflow.');
             try {
                 const result = await request('/api/agent/recover', { method: 'POST', body: JSON.stringify({
@@ -330,6 +458,7 @@ async function startCheckout(event) {
                     orderId: order.orderId, paymentId: event.error?.metadata?.payment_id,
                     source: 'checkout'
                 }) });
+                if (result.audit) saveLocalAuditEntry(result.audit);
                 const decision = result.recovery;
                 document.getElementById('payment-result').innerHTML = `<div class="result-box"><h3>Next step: ${escapeHtml(decision.action)}</h3><p>${escapeHtml(decision.message)}</p><div class="result-actions"><button class="button-secondary" data-action="speak" data-message="${escapeHtml(decision.message)}" data-language="${escapeHtml(decision.language || 'ENGLISH')}">Play message</button>${decision.paymentLink ? `<a class="button-primary" href="${escapeHtml(decision.paymentLink)}" target="_blank" rel="noopener">Open payment link ↗</a>` : ''}<span class="helper-text" data-speech-status>Attempting spoken message...</span></div></div>`;
                 speakMessage(decision.message, decision.language, document.querySelector('[data-speech-status]'));
@@ -348,6 +477,7 @@ async function resetDemo() {
     if (!window.confirm('Reset all local demo metrics, audit events, and promise records?')) return;
     try {
         await request('/api/agent/reset-demo', { method: 'POST', body: '{}' });
+        clearLocalAuditHistory();
         await refreshDashboard();
         showToast('Demo data reset.');
     } catch (error) { showToast(error.message, true); }
