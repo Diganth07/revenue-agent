@@ -325,7 +325,11 @@ async function startCheckout(event) {
             const reason = event.error?.description || 'Payment could not be completed';
             showToast('Payment failed. Sending event to recovery workflow.');
             try {
-                const result = await request('/api/agent/recover', { method: 'POST', body: JSON.stringify({ lossType: 'PAYMENT_FAILURE', amount, customer, reason, orderId: order.orderId, source: 'checkout' }) });
+                const result = await request('/api/agent/recover', { method: 'POST', body: JSON.stringify({
+                    lossType: 'PAYMENT_FAILURE', amount, customer, reason,
+                    orderId: order.orderId, paymentId: event.error?.metadata?.payment_id,
+                    source: 'checkout'
+                }) });
                 const decision = result.recovery;
                 document.getElementById('payment-result').innerHTML = `<div class="result-box"><h3>Next step: ${escapeHtml(decision.action)}</h3><p>${escapeHtml(decision.message)}</p><div class="result-actions"><button class="button-secondary" data-action="speak" data-message="${escapeHtml(decision.message)}" data-language="${escapeHtml(decision.language || 'ENGLISH')}">Play message</button>${decision.paymentLink ? `<a class="button-primary" href="${escapeHtml(decision.paymentLink)}" target="_blank" rel="noopener">Open payment link ↗</a>` : ''}<span class="helper-text" data-speech-status>Attempting spoken message...</span></div></div>`;
                 speakMessage(decision.message, decision.language, document.querySelector('[data-speech-status]'));

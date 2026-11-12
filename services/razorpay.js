@@ -45,13 +45,8 @@ async function createPaymentLink(amount, customer, description = 'Complete your 
 }
 
 async function fetchPayment(paymentId) {
-    try {
-        const razorpay = getRazorpayClient();
-        return await razorpay.payments.fetch(paymentId);
-    } catch (error) {
-        console.error('Razorpay fetch error:', error);
-        return null;
-    }
+    const razorpay = getRazorpayClient();
+    return razorpay.payments.fetch(paymentId);
 }
 
 function verifyPaymentSignature(orderId, paymentId, signature) {

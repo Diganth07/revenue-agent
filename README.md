@@ -48,6 +48,14 @@ The local recovery engine remains available as a fallback when Gemini is unavail
 
 Local state is stored in the ignored `data/recovery-store.sqlite` SQLite database. On first startup, any existing `data/recovery-store.json` history is imported once and left in place as a backup. Set `RECOVERY_DB_PATH` to choose another database file. The built-in SQLite module requires Node.js 22.13 or newer.
 
+Check the local SQLite file and recovery data with Python:
+
+```powershell
+py scripts\check_database.py
+```
+
+The checker opens the database read-only and verifies SQLite integrity, the recovery table, and the saved audit, promise, and metrics data.
+
 Vercel's `/tmp` filesystem is temporary and is not shared between serverless instances. The status endpoint reports this as non-persistent; use a hosted database for durable history in a Vercel deployment. Payment retries and outbound notifications are currently simulated and audited; connect those action adapters before production use.
 
 ## Postman

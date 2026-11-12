@@ -123,19 +123,34 @@ router.post('/create-order', async (req, res) => {
 
 router.post('/verify-payment', async (req, res) => {
     try {
-        const { razorpay_order_id: orderId, razorpay_payment_id: paymentId, razorpay_signature: signature, amount = 500, customer = 'Customer' } = req.body;
+        const { razorpay_order_id: orderId, razorpay_payment_id: paymentId, razorpay_signature: signature, customer = 'Customer' } = req.body;
         if (!verifyPaymentSignature(orderId, paymentId, signature)) {
             return res.status(400).json({ success: false, error: 'Invalid Razorpay payment signature' });
         }
 
         const payment = await fetchPayment(paymentId);
-        const paymentStatus = payment?.status || 'captured';
-        const recoveryEntry = paymentStatus === 'captured'
-            ? recordSuccessfulPayment(amount, customer, paymentId, orderId)
-            : null;
+        if (payment.order_id !== orderId) {
+            return res.status(400).json({ success: false, error: 'Payment does not belong to this order' });
+        }
+        if (payment.status !== 'captured') {
+            return res.status(409).json({ success: false, error: 'Payment has not been captured', paymentStatus: payment.status });
+        }
+        const checkoutEntry = getAuditLog().find(entry => entry.lossType === 'CHECKOUT_STARTED' && entry.orderId === orderId);
+        if (!checkoutEntry) {
+            return res.status(404).json({ success: false, error: 'Checkout record not found' });
+        }
+        if (Number(payment.amount) !== Math.round(Number(checkoutEntry.amount) * 100)) {
+            return res.status(400).json({ success: false, error: 'Payment amount does not match the order' });
+        }
+        const recoveryEntry = recordSuccessfulPayment(
+            Number(payment.amount) / 100,
+            checkoutEntry.customer || customer,
+            paymentId,
+            orderId
+        );
         res.json({
             success: true,
-            paymentStatus,
+            paymentStatus: payment.status,
             paymentId,
             orderId,
             payment,

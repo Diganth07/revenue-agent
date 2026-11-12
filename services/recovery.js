@@ -226,7 +226,8 @@ function recordCheckoutStarted(amount, customer, orderId) {
 
 function updateCheckoutStatus(orderId, status, paymentId = null) {
     const entry = auditLog.find(item => item.lossType === 'CHECKOUT_STARTED' && item.orderId === orderId);
-    if (!entry || entry.paymentStatus !== 'created') return entry || null;
+    if (!entry || (entry.paymentStatus !== 'created' && status !== 'captured')) return entry || null;
+    if (entry.paymentStatus === 'captured') return entry;
 
     entry.paymentStatus = status;
     entry.paymentId = paymentId;
@@ -241,7 +242,11 @@ function updateCheckoutStatus(orderId, status, paymentId = null) {
 }
 
 function recordSuccessfulPayment(amount, customer, paymentId = null, orderId = null) {
-    if (orderId) updateCheckoutStatus(orderId, 'captured', paymentId);
+    if (orderId) {
+        const existingPayment = auditLog.find(item => item.lossType === 'PAYMENT_SUCCESS' && item.orderId === orderId);
+        if (existingPayment) return existingPayment;
+        updateCheckoutStatus(orderId, 'captured', paymentId);
+    }
     const numericAmount = Number(amount) || 0;
     const entry = {
         id: auditLog.length + 1,
@@ -303,6 +308,7 @@ function getStorageStatus() {
     return {
         engine: 'SQLite',
         persistent: !process.env.VERCEL,
+        integrity: database.prepare('PRAGMA integrity_check').get().integrity_check,
         migratedFromJson,
         note: process.env.VERCEL ? 'The serverless filesystem is temporary; use a hosted database for durable storage.' : null
     };
