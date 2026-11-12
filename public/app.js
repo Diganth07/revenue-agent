@@ -152,7 +152,7 @@ function appMarkup() {
 
                 <section class="page-content" data-page="audit">
                     <div class="section-heading"><div><h2>Recovery audit</h2><p>Decisions, outcomes, and payment promises recorded by the service.</p></div><div class="inline-tools"><input class="search-input" id="audit-search" type="search" placeholder="Search customer, event, or action" aria-label="Search audit log" /><button class="button-secondary" data-action="refresh">Refresh</button></div></div>
-                    <section class="panel table-panel"><div class="table-wrap"><table><thead><tr><th>Time</th><th>Customer</th><th>Event / reason</th><th>Amount</th><th>Action</th><th>Outcome</th></tr></thead><tbody id="audit-rows"></tbody></table></div></section>
+                    <section class="panel table-panel"><div class="table-wrap"><table><thead><tr><th>Time</th><th>Customer</th><th>Event / reason</th><th>Amount</th><th>Action</th><th>Outcome</th><th>Recovery</th></tr></thead><tbody id="audit-rows"></tbody></table></div></section>
                     <section class="panel"><div class="panel-heading"><h2>Promise-to-pay follow-up</h2><small id="promise-count">—</small></div><div class="promise-list" id="promise-list"><div class="empty-state">Loading promises...</div></div></section>
                 </section>
 
@@ -281,14 +281,56 @@ function renderAudit() {
             <td>${escapeHtml(entry.customer || '—')}</td>
             <td>${escapeHtml((entry.lossType || '—').replaceAll('_', ' '))}<div class="helper-text">${escapeHtml(entry.reason || '')}</div></td>
             <td>${money(entry.amount)}</td><td>${actionBadge(entry.action)}</td>
-            <td>${escapeHtml(entry.result || '—')}</td>
+            <td>${escapeHtml(entry.result || '—')}${entry.paymentLinkUrl ? `<div><a href="${escapeHtml(entry.paymentLinkUrl)}" target="_blank" rel="noopener">Open payment link</a></div>` : ''}</td>
+            <td>${canRecoverAuditEntry(entry)
+                ? `<button class="button-secondary" data-action="recover-audit" data-audit-id="${escapeHtml(entry._auditKey || auditEntryKey(entry))}" ${entry.recoveryTriggeredAt || entry.recoveryInProgress ? 'disabled' : ''}>${entry.recoveryInProgress ? 'Recovering…' : entry.recoveryTriggeredAt ? 'Started' : 'Recover'}</button>`
+                : '—'}</td>
         </tr>
-    `).join('') : '<tr><td colspan="6" class="empty-state">No matching audit events.</td></tr>';
+    `).join('') : '<tr><td colspan="7" class="empty-state">No matching audit events.</td></tr>';
 
     document.getElementById('promise-count').textContent = `${state.promises.length} TOTAL`;
     document.getElementById('promise-list').innerHTML = state.promises.length ? [...state.promises].reverse().map(promise => `
         <div class="promise-row"><div><div class="promise-name">${escapeHtml(promise.customer || 'Customer')}</div><div class="promise-detail">${escapeHtml(promise.promiseDate || 'No date provided')} · Created ${escapeHtml(new Date(promise.createdAt).toLocaleDateString())}</div></div><div><strong>${money(promise.amount)}</strong> <span class="badge ${promise.status === 'OPEN' ? 'badge--warning' : ''}">${escapeHtml(promise.status || 'OPEN')}</span></div></div>
     `).join('') : '<div class="empty-state">No payment promises are being tracked.</div>';
+}
+
+function canRecoverAuditEntry(entry) {
+    return entry.lossType === 'PAYMENT_FAILURE'
+        || entry.lossType === 'CHECKOUT_DROPOFF'
+        || (entry.lossType === 'CHECKOUT_STARTED'
+            && ['dismissed', 'failed'].includes(entry.paymentStatus));
+}
+
+async function recoverAuditEntry(auditKey) {
+    const entry = state.audit.find(item => auditEntryKey(item) === auditKey);
+    if (!entry || !canRecoverAuditEntry(entry) || entry.recoveryTriggeredAt || entry.recoveryInProgress) return;
+
+    entry.recoveryInProgress = true;
+    renderAudit();
+    const lossType = entry.lossType === 'CHECKOUT_STARTED' ? 'CHECKOUT_DROPOFF' : entry.lossType;
+    try {
+        const result = await request('/api/agent/recover', {
+            method: 'POST',
+            body: JSON.stringify({
+                lossType,
+                amount: Number(entry.amount) || 0,
+                customer: entry.customer || 'Customer',
+                reason: entry.reason || 'Customer requested recovery follow-up',
+                source: 'audit-trail'
+            })
+        });
+        entry.recoveryInProgress = false;
+        entry.recoveryTriggeredAt = new Date().toISOString();
+        entry.recoveryAuditId = result.audit?.id || null;
+        saveLocalAuditEntry(entry);
+        if (result.audit) saveLocalAuditEntry(result.audit);
+        await refreshDashboard();
+        showToast('Recovery started from the audit trail.');
+    } catch (error) {
+        entry.recoveryInProgress = false;
+        renderAudit();
+        showToast(`Could not start recovery: ${error.message}`, true);
+    }
 }
 
 function renderIntegrations() {
@@ -524,6 +566,7 @@ document.addEventListener('click', event => {
     if (!actionButton) return;
     if (actionButton.dataset.action === 'refresh') refreshDashboard();
     if (actionButton.dataset.action === 'reset') resetDemo();
+    if (actionButton.dataset.action === 'recover-audit') recoverAuditEntry(actionButton.dataset.auditId);
     if (actionButton.dataset.action === 'speak') speakMessage(actionButton.dataset.message, actionButton.dataset.language, actionButton.closest('.result-box')?.querySelector('[data-speech-status]'));
 });
 
