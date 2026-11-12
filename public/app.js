@@ -116,7 +116,7 @@ function appMarkup() {
                     <div class="metric-grid" id="metrics"><div class="metric"><div class="metric-label">Loading workspace</div><div class="metric-value">...</div></div></div>
                     <div class="overview-grid">
                         <section class="panel">
-                            <div class="panel-heading"><h2>Event mix</h2><small>RECORDED RECOVERY EVENTS</small></div>
+                            <div class="panel-heading"><h2>Event mix</h2><small>ALL RECORDED ACTIVITY</small></div>
                             <div class="breakdown-list" id="breakdown"><div class="empty-state">Loading event mix...</div></div>
                         </section>
                         <section class="panel quick-panel">
@@ -188,9 +188,38 @@ function setApiHealth(isOnline) {
 }
 
 function renderMetrics() {
-    const metrics = state.metrics || {};
+    const audit = state.audit;
+    const recoveryEvents = audit.filter(entry => !['CHECKOUT_STARTED', 'PAYMENT_SUCCESS'].includes(entry.lossType));
+    const paymentEntries = audit.filter(entry => entry.lossType === 'PAYMENT_SUCCESS');
+    const capturedOrders = new Set(
+        audit.filter(entry => entry.lossType === 'CHECKOUT_STARTED' && entry.paymentStatus === 'captured')
+            .map(entry => entry.orderId)
+            .filter(Boolean)
+    );
+    const recoveredAmount = paymentEntries.reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0)
+        + audit.filter(entry => entry.paymentLinkStatus === 'paid')
+            .reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0);
+    const eventCounts = audit.reduce((counts, entry) => {
+        counts[entry.lossType] = (counts[entry.lossType] || 0) + 1;
+        return counts;
+    }, {});
+    const metrics = {
+        ...(state.metrics || {}),
+        totalAttempted: recoveryEvents.length,
+        totalRecovered: Math.max(paymentEntries.length, capturedOrders.size)
+            + audit.filter(entry => entry.paymentLinkStatus === 'paid').length,
+        recoveryRate: recoveryEvents.length
+            ? Math.round(((Math.max(paymentEntries.length, capturedOrders.size)
+                + audit.filter(entry => entry.paymentLinkStatus === 'paid').length) / recoveryEvents.length) * 100)
+            : 0,
+        recoveredAmount,
+        byLossType: eventCounts,
+        atRiskAmount: audit
+            .filter(entry => !entry.resolved && ['api', 'checkout', 'razorpay-webhook'].includes(entry.source))
+            .reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0)
+    };
     const cells = [
-        ['Events processed', metrics.totalAttempted || 0, 'Recovery attempts'],
+        ['Events processed', audit.length, 'All recorded activity'],
         ['Recovered', metrics.totalRecovered || 0, 'Payments captured'],
         ['Recovery rate', `${metrics.recoveryRate || 0}%`, 'Captured / attempted'],
         ['Recovered revenue', money(metrics.recoveredAmount), 'Confirmed payments'],
