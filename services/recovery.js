@@ -252,6 +252,12 @@ function recordSuccessfulPayment(amount, customer, paymentId = null, orderId = n
         const existingPayment = auditLog.find(item => item.lossType === 'PAYMENT_SUCCESS' && item.orderId === orderId);
         if (existingPayment) return existingPayment;
         updateCheckoutStatus(orderId, 'captured', paymentId);
+        for (const entry of auditLog) {
+            if (entry.orderId === orderId && entry.lossType !== 'PAYMENT_SUCCESS') {
+                entry.resolved = true;
+                entry.result = 'Payment recovered; no further follow-up is required.';
+            }
+        }
     }
     const numericAmount = Number(amount) || 0;
     const entry = {
@@ -289,7 +295,7 @@ function getMetrics() {
         auditLog: auditLog.slice(-20),
         openPromises: promises.filter(item => item.status === 'OPEN').length,
         atRiskAmount: auditLog
-            .filter(item => !item.resolved && ['api', 'checkout', 'razorpay-webhook'].includes(item.source))
+            .filter(item => !item.resolved && ['api', 'audit-trail', 'checkout', 'checkout-session', 'razorpay-webhook'].includes(item.source))
             .reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
     };
 }

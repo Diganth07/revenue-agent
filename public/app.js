@@ -215,7 +215,7 @@ function renderMetrics() {
         recoveredAmount,
         byLossType: eventCounts,
         atRiskAmount: audit
-            .filter(entry => !entry.resolved && ['api', 'checkout', 'razorpay-webhook'].includes(entry.source))
+            .filter(entry => !entry.resolved && ['api', 'audit-trail', 'checkout', 'checkout-session', 'razorpay-webhook'].includes(entry.source))
             .reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0)
     };
     const cells = [
